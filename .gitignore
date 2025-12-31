@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Debug
+.vscode-test/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# API Keys (if stored locally)
+*.key
+secrets/

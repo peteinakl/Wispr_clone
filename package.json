@@ -1,0 +1,38 @@
+{
+  "name": "flowtype-extension",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI-powered voice-to-text dictation Chrome extension using OpenAI Whisper via Replicate API",
+  "author": "Your Name",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/FlowType.git"
+  },
+  "keywords": [
+    "chrome-extension",
+    "voice-to-text",
+    "speech-recognition",
+    "whisper",
+    "ai",
+    "transcription",
+    "dictation"
+  ],
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build && vite build --config vite.content.config.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.275",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
