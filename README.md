@@ -11,11 +11,13 @@ FlowType is a Chrome extension that enables seamless voice-to-text transcription
 
 ## ✨ Features
 
-- **Universal Compatibility**: Works on any website with text fields (Gmail, Google Docs, Notion, Slack, etc.)
+- **Universal Compatibility**: Works on most websites with standard text fields (Gmail, Slack, Notion, Reddit, etc.)
 - **Simple Keyboard Shortcut**: Press `Cmd+Shift+Space` (Mac) or `Ctrl+Shift+Space` (Windows/Linux) to start/stop recording
 - **Real-time Visual Feedback**: Beautiful floating indicator shows recording status with live duration counter
 - **High-Quality Transcription**: Powered by OpenAI's Whisper large-v3 model via Replicate
 - **Smart Text Insertion**: Preserves cursor position and works with input fields, textareas, and contenteditable elements
+
+> **Note**: Does not currently support complex rich text editors like Google Docs or M365 Word Online. See [Known Limitations](#️-known-limitations) for details.
 
 ---
 
@@ -78,7 +80,28 @@ FlowType is a Chrome extension that enables seamless voice-to-text transcription
 
 - `<input type="text">` elements
 - `<textarea>` elements
-- `contenteditable` divs (Google Docs, Notion, etc.)
+- Standard `contenteditable` divs
+
+### ✅ Confirmed Working Sites
+
+- Gmail (compose, reply)
+- Slack (messages, threads)
+- Twitter/X (tweets, replies)
+- Reddit (posts, comments)
+- Notion (pages, databases)
+- Discord (messages)
+- Linear (issues, comments)
+- GitHub (issues, comments, PRs)
+- Most standard web forms and text inputs
+
+### ⚠️ Known Limitations
+
+**Does NOT work with complex rich text editors:**
+- ❌ Google Docs
+- ❌ Microsoft 365 Word Online
+- ❌ Google Sheets (cells)
+
+**Why?** These applications use custom-built editor frameworks with their own rendering engines, not standard HTML elements. They require deep integration with editor-specific APIs. FlowType works with ~90% of websites that use standard text inputs.
 
 ### Visual Feedback
 
