@@ -1,6 +1,7 @@
 import { MessageType, type RecordingState, type RecordingDataMessage } from '@/lib/types/messages';
 import { ReplicateClient } from '@/lib/api/replicate-client';
 import { StorageManager } from '@/lib/storage/storage-manager';
+import { TextRefinementService } from '@/lib/services/text-refinement';
 import { OFFSCREEN_DOCUMENT_PATH, ERROR_MESSAGES } from '@/shared/constants';
 import { base64ToBlob } from '@/shared/utils';
 
@@ -43,20 +44,58 @@ async function toggleRecording() {
 }
 
 /**
+ * Ensure content script is injected in the tab
+ */
+async function ensureContentScriptInjected(tabId: number): Promise<void> {
+  try {
+    // Try to ping the content script
+    await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+    console.log('[ServiceWorker] Content script already injected');
+  } catch (error) {
+    // Content script not present, inject it
+    console.log('[ServiceWorker] Injecting content script...');
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js'],
+      });
+      // Wait a bit for the content script to initialize
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('[ServiceWorker] Content script injected');
+    } catch (injectError) {
+      console.warn('[ServiceWorker] Cannot inject content script on this page:', injectError);
+      // This is expected on chrome://, extension pages, etc.
+    }
+  }
+}
+
+/**
  * Start recording
  */
 async function startRecording() {
   try {
     // Get current active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    console.log('[ServiceWorker] Active tab:', tab?.url, 'ID:', tab?.id);
     if (!tab?.id) {
       throw new Error('No active tab');
     }
+
+    // Skip chrome:// URLs
+    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
+      throw new Error('Cannot record on Chrome internal pages. Please switch to a regular webpage (like google.com)');
+    }
+
     currentTabId = tab.id;
+
+    // Ensure content script is injected
+    await ensureContentScriptInjected(currentTabId);
 
     // Create offscreen document if not exists
     if (!offscreenDocumentCreated) {
       await createOffscreenDocument();
+      // Wait for offscreen document to be ready (needs time to load JS and set up listeners)
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     // Send message to offscreen to start recording
@@ -73,9 +112,14 @@ async function startRecording() {
     recordingState = 'recording';
 
     // Notify content script to show indicator
-    await chrome.tabs.sendMessage(currentTabId, {
-      type: MessageType.RECORDING_STARTED,
-    });
+    try {
+      await chrome.tabs.sendMessage(currentTabId, {
+        type: MessageType.RECORDING_STARTED,
+      });
+    } catch (error) {
+      console.warn('[ServiceWorker] Content script not ready:', error);
+      // Continue anyway - user will see indicator when content script loads
+    }
 
     console.log('[ServiceWorker] Recording started');
   } catch (error) {
@@ -149,11 +193,43 @@ async function transcribeAudio(audioBlob: Blob) {
 
     console.log('[ServiceWorker] Transcription complete:', transcription);
 
-    // Send transcription to content script
+    // Get Claude API key and writing style
+    const claudeApiKey = await StorageManager.getClaudeApiKey();
+    const writingStyle = await StorageManager.getWritingStyle();
+
+    let finalText = transcription;
+
+    // Apply intelligence if Claude key is available
+    if (claudeApiKey) {
+      try {
+        // Notify content script that refinement started
+        if (currentTabId) {
+          await chrome.tabs.sendMessage(currentTabId, {
+            type: MessageType.REFINEMENT_STARTED,
+          });
+        }
+
+        const refinementService = new TextRefinementService();
+        finalText = await refinementService.refineTranscription(
+          transcription,
+          writingStyle,
+          claudeApiKey
+        );
+
+        console.log('[ServiceWorker] Text refinement complete');
+      } catch (error) {
+        console.error('[ServiceWorker] Refinement failed, using raw transcription:', error);
+        // Fallback to raw transcription - graceful degradation
+      }
+    } else {
+      console.log('[ServiceWorker] No Claude API key, using raw transcription');
+    }
+
+    // Send final text to content script
     if (currentTabId) {
       await chrome.tabs.sendMessage(currentTabId, {
         type: MessageType.TRANSCRIPTION_COMPLETE,
-        data: { text: transcription },
+        data: { text: finalText },
       });
     }
 
@@ -216,7 +292,7 @@ async function notifyError(error: string) {
       data: { error },
     });
   } catch (err) {
-    console.error('[ServiceWorker] Failed to notify error:', err);
+    console.warn('[ServiceWorker] Failed to notify error (content script may not be ready):', err);
   }
 }
 

@@ -9,6 +9,7 @@ export enum MessageType {
   // Service Worker -> Content Script
   RECORDING_STARTED = 'RECORDING_STARTED',
   RECORDING_STOPPED = 'RECORDING_STOPPED',
+  REFINEMENT_STARTED = 'REFINEMENT_STARTED',
   TRANSCRIPTION_COMPLETE = 'TRANSCRIPTION_COMPLETE',
   TRANSCRIPTION_ERROR = 'TRANSCRIPTION_ERROR',
 
@@ -51,6 +52,10 @@ export interface RecordingStartedMessage extends Message {
 
 export interface RecordingStoppedMessage extends Message {
   type: MessageType.RECORDING_STOPPED;
+}
+
+export interface RefinementStartedMessage extends Message {
+  type: MessageType.REFINEMENT_STARTED;
 }
 
 export interface TranscriptionCompleteMessage extends Message {

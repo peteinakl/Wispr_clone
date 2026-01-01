@@ -15,12 +15,21 @@ let activeElement: HTMLElement | null = null;
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Content] Message received:', message.type);
 
+  // Handle PING for content script detection
+  if (message.type === 'PING') {
+    sendResponse({ success: true });
+    return true;
+  }
+
   switch (message.type) {
     case MessageType.RECORDING_STARTED:
       handleRecordingStarted();
       break;
     case MessageType.RECORDING_STOPPED:
       handleRecordingStopped();
+      break;
+    case MessageType.REFINEMENT_STARTED:
+      handleRefinementStarted();
       break;
     case MessageType.TRANSCRIPTION_COMPLETE:
       handleTranscription(message.data.text);
@@ -72,6 +81,17 @@ function handleRecordingStopped() {
 
   if (indicator) {
     indicator.showProcessing();
+  }
+}
+
+/**
+ * Handle refinement started
+ */
+function handleRefinementStarted() {
+  console.log('[Content] Text refinement started');
+
+  if (indicator) {
+    indicator.showRefining();
   }
 }
 

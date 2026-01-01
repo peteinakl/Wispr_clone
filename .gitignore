@@ -45,3 +45,6 @@ Desktop.ini
 # API Keys (if stored locally)
 *.key
 secrets/
+
+# Claude context (project-specific, may contain sensitive info)
+CLAUDE.md

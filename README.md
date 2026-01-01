@@ -2,7 +2,7 @@
 
 **AI-powered voice-to-text dictation for any text field on any website.**
 
-FlowType is a Chrome extension that enables seamless voice-to-text transcription using OpenAI's Whisper AI (via Replicate API). Simply press a keyboard shortcut, speak, and watch your words appear in any text field.
+FlowType is a Chrome extension that enables seamless voice-to-text transcription using OpenAI's Whisper AI (via Replicate API) with optional Claude AI text refinement. Simply press a keyboard shortcut, speak, and watch your words appear in any text field—automatically refined and polished if you enable intelligence features.
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 ![Chrome](https://img.shields.io/badge/chrome-91%2B-green.svg)
@@ -11,11 +11,19 @@ FlowType is a Chrome extension that enables seamless voice-to-text transcription
 
 ## ✨ Features
 
+### Core Features
 - **Universal Compatibility**: Works on most websites with standard text fields (Gmail, Slack, Notion, Reddit, etc.)
 - **Simple Keyboard Shortcut**: Press `Cmd+Shift+Space` (Mac) or `Ctrl+Shift+Space` (Windows/Linux) to start/stop recording
 - **Real-time Visual Feedback**: Beautiful floating indicator shows recording status with live duration counter
 - **High-Quality Transcription**: Powered by OpenAI's Whisper large-v3 model via Replicate
 - **Smart Text Insertion**: Preserves cursor position and works with input fields, textareas, and contenteditable elements
+
+### Intelligence Features (Optional)
+- **AI Text Refinement**: Optional Claude AI integration for polished, professional output
+- **Filler Word Removal**: Automatically removes "um", "uh", "like", and other filler words
+- **Smart Punctuation**: Improves punctuation and sentence structure
+- **Writing Styles**: Choose from Professional, Casual, or Technical styles to match your context
+- **Graceful Fallback**: Works perfectly with just Whisper if Claude API key is not configured
 
 > **Note**: Does not currently support complex rich text editors like Google Docs or M365 Word Online. See [Known Limitations](#️-known-limitations) for details.
 
@@ -26,7 +34,8 @@ FlowType is a Chrome extension that enables seamless voice-to-text transcription
 ### Prerequisites
 
 - **Chrome 91 or later** (for Manifest V3 ES modules support)
-- **Replicate API key** (get one at [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens))
+- **Replicate API key** (required - get one at [replicate.com/account/api-tokens](https://replicate.com/account/api-tokens))
+- **Claude API key** (optional - get one at [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys))
 - **Node.js 16+** and npm (for building)
 
 ### Installation
@@ -54,13 +63,17 @@ FlowType is a Chrome extension that enables seamless voice-to-text transcription
    - Select the `dist/` directory from this project
    - The FlowType extension should now appear in your extensions list
 
-5. **Configure API Key:**
+5. **Configure API Keys:**
    - Click the FlowType extension icon in your Chrome toolbar
    - Click **"Grant Microphone Access"** (opens a new tab)
    - Click **"Grant Microphone Access"** in the new tab and allow the permission
    - Return to the popup
-   - Enter your Replicate API key
+   - Enter your Replicate API key (required)
    - Click **Save API Key**
+   - *(Optional)* Scroll down to "Intelligence Features"
+   - *(Optional)* Enter your Claude API key for text refinement
+   - *(Optional)* Choose your preferred writing style (Professional/Casual/Technical)
+   - *(Optional)* Click **Save Intelligence Settings**
 
 ---
 
@@ -105,9 +118,10 @@ FlowType is a Chrome extension that enables seamless voice-to-text transcription
 
 ### Visual Feedback
 
-The floating indicator shows three states:
+The floating indicator shows these states:
 - **Recording**: Red waveform animation with live duration counter
-- **Processing**: Blue spinner while transcribing (5-15 seconds)
+- **Processing**: Blue spinner while transcribing with Whisper (5-15 seconds)
+- **Refining**: Purple spinner while Claude refines the text (2-5 seconds, only if Claude API key configured)
 - **Error**: Red alert with error message
 
 ---
@@ -150,10 +164,16 @@ npm run type-check
 │   │   ├── popup.tsx
 │   │   └── popup.css
 │   ├── lib/                # Core libraries
-│   │   ├── api/            # Replicate API client
+│   │   ├── api/            # API clients
+│   │   │   ├── replicate-client.ts  # Whisper transcription
+│   │   │   └── claude-client.ts     # Text refinement (Phase 2)
 │   │   ├── audio/          # Audio recording
+│   │   ├── services/       # Business logic
+│   │   │   └── text-refinement.ts   # Claude refinement service
 │   │   ├── storage/        # Chrome storage wrapper
 │   │   └── types/          # TypeScript types
+│   │       ├── messages.ts
+│   │       └── settings.ts          # Intelligence settings (Phase 2)
 │   └── shared/             # Shared utilities
 │       ├── constants.ts
 │       └── utils.ts
@@ -175,7 +195,7 @@ Creates Offscreen Document (if needed)
     ↓
 Offscreen: Requests microphone permission & starts MediaRecorder
     ↓
-Service Worker → Content Script: Show floating indicator
+Service Worker → Content Script: Show floating indicator (RED waveform)
     ↓
 User speaks and presses shortcut again
     ↓
@@ -183,9 +203,21 @@ Offscreen: Stops recording, returns audio blob as base64
     ↓
 Service Worker: Sends audio to Replicate Whisper API
     ↓
+Service Worker → Content Script: Update indicator (BLUE spinner "Processing")
+    ↓
 Service Worker: Polls for transcription result (60 attempts, 1s intervals)
     ↓
-Service Worker → Content Script: Send transcribed text
+[If Claude API key configured]
+    ↓
+Service Worker → Content Script: Update indicator (PURPLE spinner "Refining")
+    ↓
+Service Worker: Sends transcription to Claude API for refinement
+    ↓
+Service Worker: Receives refined text (filler words removed, improved punctuation)
+    ↓
+[End conditional]
+    ↓
+Service Worker → Content Script: Send final text
     ↓
 Content Script: Inserts text at saved cursor position
 ```
@@ -269,19 +301,31 @@ Content Script: Inserts text at saved cursor position
 ## 🔐 Privacy & Security
 
 - **No data storage**: Audio is processed via Replicate API and immediately discarded
-- **API key stored locally**: Your Replicate API key is stored only in Chrome's sync storage
+- **API keys stored locally**: Your Replicate and Claude API keys are stored only in Chrome's sync storage (encrypted by Chrome)
 - **Microphone access**: Only active during recording sessions
+- **Optional AI refinement**: Transcribed text sent to Claude API only if you configure a Claude API key
+- **Data retention**:
+  - Replicate: Audio processed and discarded immediately
+  - Anthropic (Claude): API data not used for training, 30-day retention policy
 - **Open source**: All code is available for review
 
 ---
 
 ## 🗺️ Roadmap
 
-### Phase 2: Intelligence (Future)
-- [ ] Claude API integration for text refinement
-- [ ] Filler word removal ("um", "uh", "like")
-- [ ] Auto-punctuation improvements
-- [ ] Multiple writing styles (professional, casual, technical)
+### ✅ Phase 1: Core Functionality (Complete)
+- [x] Whisper AI transcription via Replicate API
+- [x] Keyboard shortcut activation
+- [x] Visual floating indicator with recording states
+- [x] Universal text field compatibility
+- [x] Smart cursor position preservation
+
+### ✅ Phase 2: Intelligence (Complete)
+- [x] Claude API integration for text refinement
+- [x] Filler word removal ("um", "uh", "like")
+- [x] Smart punctuation improvements
+- [x] Multiple writing styles (professional, casual, technical)
+- [x] Graceful fallback when Claude not configured
 
 ### Phase 3: Personalization (Future)
 - [ ] Personal dictionary for custom terms
@@ -304,7 +348,8 @@ Content Script: Inserts text at saved cursor position
 - **React**: Popup UI
 - **Vite**: Fast build system
 - **Chrome Manifest V3**: Modern extension architecture
-- **Replicate API**: Whisper large-v3 model
+- **Replicate API**: Whisper large-v3 model for transcription
+- **Anthropic Claude API**: Claude 3.5 Haiku for text refinement (optional)
 - **MediaRecorder API**: Audio capture (16kHz, webm/opus)
 
 ### Browser Compatibility
@@ -328,6 +373,7 @@ Apache 2.0
 ## 🙏 Credits
 
 - **Whisper AI** by OpenAI (via Replicate)
+- **Claude AI** by Anthropic (optional text refinement)
 - **JetBrains Mono** font
 - Built with **React**, **TypeScript**, and **Vite**
 

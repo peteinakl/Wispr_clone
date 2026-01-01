@@ -73,6 +73,33 @@ export class FloatingIndicator {
   }
 
   /**
+   * Show refining state with spinner
+   */
+  showRefining(): void {
+    if (!this.container) return;
+
+    this.stopWaveformAnimation();
+    this.stopDurationCounter();
+
+    this.container.innerHTML = `
+      <div class="flowtype-indicator-content">
+        <div class="flowtype-spinner flowtype-spinner-refining">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="9" stroke-width="2.5" />
+          </svg>
+        </div>
+        <div class="flowtype-text">
+          <span class="flowtype-status">REFINING</span>
+          <span class="flowtype-substatus">Applying intelligence...</span>
+        </div>
+      </div>
+    `;
+
+    this.container.classList.remove('flowtype-processing');
+    this.container.classList.add('flowtype-refining');
+  }
+
+  /**
    * Show error state with message
    */
   showError(message: string): void {
@@ -192,6 +219,11 @@ export class FloatingIndicator {
         border-color: rgba(59, 130, 246, 0.3);
       }
 
+      .flowtype-indicator.flowtype-refining {
+        background: rgba(139, 92, 246, 0.15);
+        border-color: rgba(139, 92, 246, 0.3);
+      }
+
       .flowtype-indicator-content {
         display: flex;
         align-items: center;
@@ -253,6 +285,11 @@ export class FloatingIndicator {
         filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.5));
       }
 
+      .flowtype-spinner-refining circle {
+        stroke: #8b5cf6;
+        filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.5));
+      }
+
       @keyframes flowtype-spin {
         to {
           transform: rotate(360deg);
@@ -286,6 +323,14 @@ export class FloatingIndicator {
         letter-spacing: 0.1em;
         text-transform: uppercase;
         opacity: 0.7;
+      }
+
+      .flowtype-substatus {
+        font-size: 10px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.6);
+        letter-spacing: 0.05em;
+        margin-top: 2px;
       }
 
       .flowtype-duration {

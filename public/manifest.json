@@ -11,7 +11,8 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://api.replicate.com/*"
+    "https://api.replicate.com/*",
+    "https://api.anthropic.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js",
