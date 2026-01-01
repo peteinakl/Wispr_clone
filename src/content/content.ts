@@ -1,6 +1,7 @@
 import { MessageType } from '@/lib/types/messages';
 import { TextInjector } from './text-injector';
 import { FloatingIndicator } from './floating-indicator';
+import { TIMING } from '@/shared/constants';
 
 /**
  * Content Script
@@ -132,13 +133,13 @@ function handleError(error: string) {
   }
   indicator.showError(error);
 
-  // Auto-hide after 3 seconds
+  // Auto-hide error after duration
   setTimeout(() => {
     if (indicator) {
       indicator.hide();
       indicator = null;
     }
-  }, 3000);
+  }, TIMING.ERROR_DISPLAY_DURATION_MS);
 
   // Cleanup
   textInjector = null;

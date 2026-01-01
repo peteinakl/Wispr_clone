@@ -71,3 +71,17 @@ export interface TranscriptionErrorMessage extends Message {
     error: string;
   };
 }
+
+/**
+ * Discriminated union of all message types
+ * Use this for type-safe message handling
+ */
+export type AnyMessage =
+  | StartRecordingMessage
+  | StopRecordingMessage
+  | RecordingDataMessage
+  | RecordingStartedMessage
+  | RecordingStoppedMessage
+  | RefinementStartedMessage
+  | TranscriptionCompleteMessage
+  | TranscriptionErrorMessage;

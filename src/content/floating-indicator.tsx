@@ -3,6 +3,9 @@
  * Premium audio equipment aesthetic with dynamic waveform visualization
  */
 
+import { TIMING } from '@/shared/constants';
+import { escapeHtml } from '@/shared/utils';
+
 export class FloatingIndicator {
   private container: HTMLDivElement | null = null;
   private styleElement: HTMLStyleElement | null = null;
@@ -120,7 +123,7 @@ export class FloatingIndicator {
         </div>
         <div class="flowtype-text">
           <span class="flowtype-status">ERROR</span>
-          <span class="flowtype-message">${this.escapeHtml(message)}</span>
+          <span class="flowtype-message">${escapeHtml(message)}</span>
         </div>
       </div>
     `;
@@ -150,7 +153,7 @@ export class FloatingIndicator {
         this.styleElement = null;
       }
       this.waveformBars = [];
-    }, 300);
+    }, TIMING.FADE_OUT_DURATION_MS);
   }
 
   /**
@@ -384,7 +387,7 @@ export class FloatingIndicator {
       });
 
       this.animationFrame = requestAnimationFrame(() => {
-        setTimeout(animate, 150);
+        setTimeout(animate, TIMING.WAVEFORM_UPDATE_INTERVAL_MS);
       });
     };
 
@@ -439,12 +442,4 @@ export class FloatingIndicator {
     }
   }
 
-  /**
-   * Escape HTML to prevent XSS
-   */
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 }

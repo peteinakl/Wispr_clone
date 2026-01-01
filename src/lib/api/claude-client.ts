@@ -5,6 +5,7 @@ import {
   CLAUDE_MAX_TOKENS,
   CLAUDE_TEMPERATURE,
 } from '@/shared/constants';
+import { handleApiError } from '@/shared/utils';
 import { WritingStyle } from '@/lib/types/settings';
 
 interface ClaudeMessage {
@@ -67,14 +68,7 @@ export class ClaudeClient {
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Invalid Claude API key');
-      } else if (response.status === 429) {
-        throw new Error('Rate limit exceeded');
-      } else {
-        const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-        throw new Error(`Claude API error: ${error.error?.message || response.statusText}`);
-      }
+      await handleApiError(response, 'Claude API');
     }
 
     const result: ClaudeResponse = await response.json();

@@ -1,5 +1,5 @@
-import { REPLICATE_API_BASE_URL, POLLING_CONFIG } from '@/shared/constants';
-import { blobToBase64, sleep } from '@/shared/utils';
+import { REPLICATE_API_BASE_URL, POLLING_CONFIG, WHISPER_MODEL_VERSION_HASH } from '@/shared/constants';
+import { blobToBase64, sleep, handleApiError } from '@/shared/utils';
 
 interface Prediction {
   id: string;
@@ -56,7 +56,7 @@ export class ReplicateClient {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        version: '4d50797290df275329f202e48c76360b3f22b08d28c196cbc54600319435f8d2',
+        version: WHISPER_MODEL_VERSION_HASH,
         input: {
           audio: audioDataUri,
           model: 'large-v3',
@@ -75,14 +75,7 @@ export class ReplicateClient {
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Invalid API key');
-      } else if (response.status === 429) {
-        throw new Error('Rate limit exceeded');
-      } else {
-        const error = await response.json().catch(() => ({ detail: response.statusText }));
-        throw new Error(`API error: ${error.detail || response.statusText}`);
-      }
+      await handleApiError(response, 'Replicate API');
     }
 
     return response.json();

@@ -2,6 +2,17 @@ import { MessageType } from '@/lib/types/messages';
 import { AudioRecorder } from '@/lib/audio/recorder';
 import { AUDIO_CONSTRAINTS } from '@/shared/constants';
 import { blobToBase64 } from '@/shared/utils';
+import { logError } from '@/lib/error-handling/error-handler';
+
+/**
+ * Response interface for recording operations
+ */
+interface RecordingResponse {
+  success: boolean;
+  audioData?: string;
+  mimeType?: string;
+  error?: string;
+}
 
 /**
  * Offscreen document for audio recording
@@ -10,6 +21,30 @@ import { blobToBase64 } from '@/shared/utils';
 
 let recorder: AudioRecorder | null = null;
 let stream: MediaStream | null = null;
+
+/**
+ * Map media device errors to user-friendly messages
+ */
+function mapMediaErrorToMessage(error: unknown): string {
+  if (!(error instanceof DOMException)) {
+    return error instanceof Error ? error.message : 'Failed to start recording';
+  }
+
+  switch (error.name) {
+    case 'NotAllowedError':
+      return 'Microphone permission denied. Please allow microphone access in your browser settings.';
+    case 'NotFoundError':
+      return 'No microphone found. Please connect a microphone and try again.';
+    case 'NotReadableError':
+      return 'Microphone is already in use by another application.';
+    case 'OverconstrainedError':
+      return 'Microphone does not support the required settings.';
+    case 'SecurityError':
+      return 'Microphone access is blocked by browser security settings.';
+    default:
+      return error.message || 'Failed to start recording';
+  }
+}
 
 // Listen for messages from service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -34,7 +69,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 /**
  * Start recording audio from microphone
  */
-async function handleStartRecording() {
+async function handleStartRecording(): Promise<RecordingResponse> {
   try {
     console.log('[Offscreen] Requesting microphone access...');
     console.log('[Offscreen] Audio constraints:', AUDIO_CONSTRAINTS);
@@ -51,40 +86,15 @@ async function handleStartRecording() {
     console.log('[Offscreen] Recording started successfully');
     return { success: true };
   } catch (error) {
-    // Log detailed error information
-    console.error('[Offscreen] Failed to start recording:', error);
-    console.error('[Offscreen] Error name:', error instanceof DOMException ? error.name : 'Unknown');
-    console.error('[Offscreen] Error message:', error instanceof Error ? error.message : String(error));
-
-    // Build detailed error message
-    let errorMessage = 'Failed to start recording';
-    if (error instanceof DOMException) {
-      switch (error.name) {
-        case 'NotAllowedError':
-          errorMessage = 'Microphone permission denied. Please allow microphone access in your browser settings.';
-          break;
-        case 'NotFoundError':
-          errorMessage = 'No microphone found. Please connect a microphone and try again.';
-          break;
-        case 'NotReadableError':
-          errorMessage = 'Microphone is already in use by another application.';
-          break;
-        case 'OverconstrainedError':
-          errorMessage = 'Microphone does not support the required settings.';
-          break;
-        case 'SecurityError':
-          errorMessage = 'Microphone access is blocked by browser security settings.';
-          break;
-        default:
-          errorMessage = error.message || errorMessage;
-      }
-    } else if (error instanceof Error) {
-      errorMessage = error.message;
-    }
+    logError(
+      'Offscreen - Start Recording',
+      error,
+      'Error name:', error instanceof DOMException ? error.name : 'Unknown'
+    );
 
     return {
       success: false,
-      error: errorMessage,
+      error: mapMediaErrorToMessage(error),
     };
   }
 }
@@ -92,7 +102,7 @@ async function handleStartRecording() {
 /**
  * Stop recording and return audio data
  */
-async function handleStopRecording() {
+async function handleStopRecording(): Promise<RecordingResponse> {
   if (!recorder) {
     return {
       success: false,
@@ -119,7 +129,7 @@ async function handleStopRecording() {
       mimeType: audioBlob.type,
     };
   } catch (error) {
-    console.error('[Offscreen] Failed to stop recording:', error);
+    logError('Offscreen - Stop Recording', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to stop recording',

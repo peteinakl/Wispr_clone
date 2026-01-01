@@ -2,8 +2,9 @@ import { MessageType, type RecordingState, type RecordingDataMessage } from '@/l
 import { ReplicateClient } from '@/lib/api/replicate-client';
 import { StorageManager } from '@/lib/storage/storage-manager';
 import { TextRefinementService } from '@/lib/services/text-refinement';
-import { OFFSCREEN_DOCUMENT_PATH, ERROR_MESSAGES } from '@/shared/constants';
+import { OFFSCREEN_DOCUMENT_PATH, ERROR_MESSAGES, TIMING } from '@/shared/constants';
 import { base64ToBlob } from '@/shared/utils';
+import { handleError } from '@/lib/error-handling/error-handler';
 
 /**
  * Service Worker (Background Script)
@@ -59,8 +60,8 @@ async function ensureContentScriptInjected(tabId: number): Promise<void> {
         target: { tabId },
         files: ['content.js'],
       });
-      // Wait a bit for the content script to initialize
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for the content script to initialize
+      await new Promise(resolve => setTimeout(resolve, TIMING.INITIALIZATION_DELAY_MS));
       console.log('[ServiceWorker] Content script injected');
     } catch (injectError) {
       console.warn('[ServiceWorker] Cannot inject content script on this page:', injectError);
@@ -70,64 +71,86 @@ async function ensureContentScriptInjected(tabId: number): Promise<void> {
 }
 
 /**
- * Start recording
+ * Validate active tab is suitable for recording
+ */
+async function validateActiveTab(): Promise<chrome.tabs.Tab> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  console.log('[ServiceWorker] Active tab:', tab?.url, 'ID:', tab?.id);
+
+  if (!tab?.id) {
+    throw new Error('No active tab');
+  }
+
+  // Skip chrome:// URLs
+  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
+    throw new Error('Cannot record on Chrome internal pages. Please switch to a regular webpage (like google.com)');
+  }
+
+  return tab;
+}
+
+/**
+ * Initialize recording services (content script and offscreen document)
+ */
+async function initializeRecordingServices(tabId: number): Promise<void> {
+  await ensureContentScriptInjected(tabId);
+
+  if (!offscreenDocumentCreated) {
+    await createOffscreenDocument();
+    // Wait for offscreen document to be ready
+    await new Promise(resolve => setTimeout(resolve, TIMING.INITIALIZATION_DELAY_MS));
+  }
+}
+
+/**
+ * Start recording in offscreen document
+ */
+async function startOffscreenRecording(): Promise<void> {
+  const response = await chrome.runtime.sendMessage({
+    type: MessageType.START_RECORDING,
+    target: 'offscreen',
+  });
+
+  if (!response?.success) {
+    throw new Error(response?.error || 'Failed to start recording');
+  }
+}
+
+/**
+ * Notify content script that recording has started
+ */
+async function notifyRecordingStart(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: MessageType.RECORDING_STARTED,
+    });
+  } catch (error) {
+    console.warn('[ServiceWorker] Content script not ready:', error);
+    // Continue anyway - user will see indicator when content script loads
+  }
+}
+
+/**
+ * Start recording audio
  */
 async function startRecording() {
   try {
-    // Get current active tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    console.log('[ServiceWorker] Active tab:', tab?.url, 'ID:', tab?.id);
-    if (!tab?.id) {
-      throw new Error('No active tab');
-    }
+    const tab = await validateActiveTab();
+    currentTabId = tab.id!;
 
-    // Skip chrome:// URLs
-    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
-      throw new Error('Cannot record on Chrome internal pages. Please switch to a regular webpage (like google.com)');
-    }
+    await initializeRecordingServices(currentTabId);
+    await startOffscreenRecording();
 
-    currentTabId = tab.id;
-
-    // Ensure content script is injected
-    await ensureContentScriptInjected(currentTabId);
-
-    // Create offscreen document if not exists
-    if (!offscreenDocumentCreated) {
-      await createOffscreenDocument();
-      // Wait for offscreen document to be ready (needs time to load JS and set up listeners)
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    // Send message to offscreen to start recording
-    const response = await chrome.runtime.sendMessage({
-      type: MessageType.START_RECORDING,
-      target: 'offscreen',
-    });
-
-    if (!response?.success) {
-      throw new Error(response?.error || 'Failed to start recording');
-    }
-
-    // Update state
     recordingState = 'recording';
-
-    // Notify content script to show indicator
-    try {
-      await chrome.tabs.sendMessage(currentTabId, {
-        type: MessageType.RECORDING_STARTED,
-      });
-    } catch (error) {
-      console.warn('[ServiceWorker] Content script not ready:', error);
-      // Continue anyway - user will see indicator when content script loads
-    }
+    await notifyRecordingStart(currentTabId);
 
     console.log('[ServiceWorker] Recording started');
   } catch (error) {
-    console.error('[ServiceWorker] Failed to start recording:', error);
+    const errorMessage = handleError('ServiceWorker - Start Recording', error);
     recordingState = 'idle';
 
     if (currentTabId) {
-      await notifyError(error instanceof Error ? error.message : 'Failed to start recording');
+      await notifyError(errorMessage);
     }
   }
 }
@@ -167,85 +190,103 @@ async function stopRecording() {
     // Transcribe audio
     await transcribeAudio(audioBlob);
   } catch (error) {
-    console.error('[ServiceWorker] Failed to stop recording:', error);
+    const errorMessage = handleError('ServiceWorker - Stop Recording', error);
     recordingState = 'idle';
 
     if (currentTabId) {
-      await notifyError(error instanceof Error ? error.message : 'Failed to stop recording');
+      await notifyError(errorMessage);
     }
   }
 }
 
 /**
- * Transcribe audio using Whisper API
+ * Get transcription from Whisper API
  */
-async function transcribeAudio(audioBlob: Blob) {
+async function getTranscription(audioBlob: Blob): Promise<string> {
+  const apiKey = await StorageManager.getApiKey();
+  if (!apiKey) {
+    throw new Error(ERROR_MESSAGES.NO_API_KEY);
+  }
+
+  const client = new ReplicateClient(apiKey);
+  const transcription = await client.transcribe(audioBlob);
+
+  console.log('[ServiceWorker] Transcription complete:', transcription);
+  return transcription;
+}
+
+/**
+ * Apply Claude refinement if available, fallback to raw transcription
+ */
+async function applyRefinementIfAvailable(transcription: string): Promise<string> {
+  const claudeApiKey = await StorageManager.getClaudeApiKey();
+
+  if (!claudeApiKey) {
+    console.log('[ServiceWorker] No Claude API key, using raw transcription');
+    return transcription;
+  }
+
   try {
-    // Get API key
-    const apiKey = await StorageManager.getApiKey();
-    if (!apiKey) {
-      throw new Error(ERROR_MESSAGES.NO_API_KEY);
-    }
-
-    // Call Replicate API
-    const client = new ReplicateClient(apiKey);
-    const transcription = await client.transcribe(audioBlob);
-
-    console.log('[ServiceWorker] Transcription complete:', transcription);
-
-    // Get Claude API key and writing style
-    const claudeApiKey = await StorageManager.getClaudeApiKey();
-    const writingStyle = await StorageManager.getWritingStyle();
-
-    let finalText = transcription;
-
-    // Apply intelligence if Claude key is available
-    if (claudeApiKey) {
-      try {
-        // Notify content script that refinement started
-        if (currentTabId) {
-          await chrome.tabs.sendMessage(currentTabId, {
-            type: MessageType.REFINEMENT_STARTED,
-          });
-        }
-
-        const refinementService = new TextRefinementService();
-        finalText = await refinementService.refineTranscription(
-          transcription,
-          writingStyle,
-          claudeApiKey
-        );
-
-        console.log('[ServiceWorker] Text refinement complete');
-      } catch (error) {
-        console.error('[ServiceWorker] Refinement failed, using raw transcription:', error);
-        // Fallback to raw transcription - graceful degradation
-      }
-    } else {
-      console.log('[ServiceWorker] No Claude API key, using raw transcription');
-    }
-
-    // Send final text to content script
+    // Notify content script that refinement started
     if (currentTabId) {
       await chrome.tabs.sendMessage(currentTabId, {
-        type: MessageType.TRANSCRIPTION_COMPLETE,
-        data: { text: finalText },
+        type: MessageType.REFINEMENT_STARTED,
       });
     }
 
-    // Reset state
-    recordingState = 'idle';
-    currentTabId = null;
+    const writingStyle = await StorageManager.getWritingStyle();
+    const refinementService = new TextRefinementService();
+    const refinedText = await refinementService.refineTranscription(
+      transcription,
+      writingStyle,
+      claudeApiKey
+    );
+
+    console.log('[ServiceWorker] Text refinement complete');
+    return refinedText;
   } catch (error) {
-    console.error('[ServiceWorker] Transcription failed:', error);
-    recordingState = 'idle';
+    handleError('ServiceWorker - Refinement', error);
+    return transcription; // Graceful degradation
+  }
+}
+
+/**
+ * Notify content script with final transcribed text
+ */
+async function notifyTranscriptionComplete(text: string): Promise<void> {
+  if (currentTabId) {
+    await chrome.tabs.sendMessage(currentTabId, {
+      type: MessageType.TRANSCRIPTION_COMPLETE,
+      data: { text },
+    });
+  }
+}
+
+/**
+ * Reset recording state and cleanup
+ */
+function resetRecordingState(): void {
+  recordingState = 'idle';
+  currentTabId = null;
+}
+
+/**
+ * Transcribe audio using Whisper API and optionally refine with Claude
+ */
+async function transcribeAudio(audioBlob: Blob) {
+  try {
+    const transcription = await getTranscription(audioBlob);
+    const finalText = await applyRefinementIfAvailable(transcription);
+    await notifyTranscriptionComplete(finalText);
+    resetRecordingState();
+  } catch (error) {
+    const errorMessage = handleError('ServiceWorker - Transcription', error);
 
     if (currentTabId) {
-      const errorMessage = error instanceof Error ? error.message : 'Transcription failed';
       await notifyError(errorMessage);
     }
 
-    currentTabId = null;
+    resetRecordingState();
   }
 }
 
@@ -275,7 +316,7 @@ async function createOffscreenDocument() {
     offscreenDocumentCreated = true;
     console.log('[ServiceWorker] Offscreen document created');
   } catch (error) {
-    console.error('[ServiceWorker] Failed to create offscreen document:', error);
+    handleError('ServiceWorker - Create Offscreen Document', error);
     throw error;
   }
 }
@@ -299,7 +340,11 @@ async function notifyError(error: string) {
 /**
  * Handle messages from other components
  */
-function handleMessage(message: any, sender: any, sendResponse: any) {
+function handleMessage(
+  message: any,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: any) => void
+): void | boolean {
   // Handle messages directed to service worker if needed
   if (message.target === 'service-worker') {
     // Future: Handle messages from popup, etc.

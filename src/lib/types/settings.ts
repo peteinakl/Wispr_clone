@@ -17,7 +17,7 @@ export interface IntelligenceSettings {
 /**
  * System prompts for each writing style
  */
-export const WRITING_STYLE_PROMPTS = {
+export const WRITING_STYLE_PROMPTS: Readonly<Record<WritingStyle, string>> = {
   [WritingStyle.PROFESSIONAL]: `You are a professional writing assistant. Your task is to refine voice-transcribed text while maintaining the original meaning and intent.
 
 Guidelines:

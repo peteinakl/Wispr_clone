@@ -58,3 +58,58 @@ export function getUserFriendlyError(error: Error | string): string {
 
   return errorMap[errorMessage] || 'Something went wrong';
 }
+
+/**
+ * Handle API error responses consistently
+ * @param response - Fetch response object
+ * @param context - Context string for error messages (e.g., 'Replicate API', 'Claude API')
+ * @throws Error with user-friendly message
+ */
+export async function handleApiError(response: Response, context: string): Promise<never> {
+  if (response.status === 401) {
+    throw new Error('Invalid API key');
+  } else if (response.status === 429) {
+    throw new Error('Rate limit exceeded');
+  } else {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(`${context} error: ${error.detail || response.statusText}`);
+  }
+}
+
+/**
+ * Check if an element is editable (input, textarea, or contenteditable)
+ * @param element - DOM element to check
+ * @returns true if element accepts text input
+ */
+export function isEditableElement(element: Element | null): element is HTMLInputElement | HTMLTextAreaElement | HTMLElement {
+  if (!element) return false;
+
+  // Check for input elements
+  if (element instanceof HTMLInputElement) {
+    const editableInputTypes = ['text', 'email', 'search', 'url', 'tel', 'password'];
+    return editableInputTypes.includes(element.type);
+  }
+
+  // Check for textarea
+  if (element instanceof HTMLTextAreaElement) {
+    return true;
+  }
+
+  // Check for contenteditable
+  if (element instanceof HTMLElement && element.isContentEditable) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ * @param text - Text to escape
+ * @returns Escaped text safe for HTML insertion
+ */
+export function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}

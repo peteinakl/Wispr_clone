@@ -5,6 +5,7 @@
 // Replicate API
 export const REPLICATE_API_BASE_URL = 'https://api.replicate.com/v1';
 export const WHISPER_MODEL_VERSION = 'openai/whisper:large-v3';
+export const WHISPER_MODEL_VERSION_HASH = '4d50797290df275329f202e48c76360b3f22b08d28c196cbc54600319435f8d2';
 
 // Claude API
 export const CLAUDE_API_BASE_URL = 'https://api.anthropic.com/v1';
@@ -39,6 +40,15 @@ export const AUDIO_RECORDING_OPTIONS = {
 export const POLLING_CONFIG = {
   MAX_ATTEMPTS: 60, // 60 attempts
   INTERVAL_MS: 1000, // 1 second
+} as const;
+
+// Timing constants
+export const TIMING = {
+  INITIALIZATION_DELAY_MS: 100, // Wait for offscreen document/content script to initialize
+  FADE_OUT_DURATION_MS: 300, // Floating indicator fade out animation
+  ERROR_DISPLAY_DURATION_MS: 3000, // How long to show error messages
+  WAVEFORM_UPDATE_INTERVAL_MS: 150, // Waveform animation refresh rate
+  RECORDER_TIMESLICE_MS: 100, // MediaRecorder data chunk interval
 } as const;
 
 // User-friendly error messages
