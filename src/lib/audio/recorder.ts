@@ -1,4 +1,4 @@
-import { AUDIO_RECORDING_OPTIONS } from '@/shared/constants';
+import { AUDIO_RECORDING_OPTIONS, TIMING } from '@/shared/constants';
 
 /**
  * Audio recorder using MediaRecorder API
@@ -8,6 +8,7 @@ export class AudioRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private stream: MediaStream;
+  private recordingStartTime: number = 0;
 
   constructor(stream: MediaStream) {
     this.stream = stream;
@@ -33,12 +34,17 @@ export class AudioRecorder {
     // Collect audio data as it becomes available
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
+        console.log('[AudioRecorder] Data chunk received, size:', event.data.size, 'bytes');
         this.audioChunks.push(event.data);
       }
     };
 
-    // Start recording (collect data every 100ms)
-    this.mediaRecorder.start(100);
+    // Start recording with timeslice to ensure data is regularly flushed from internal buffers
+    // This prevents buffer overflow issues with longer recordings (20+ seconds)
+    // Without timeslice, Chrome may drop or corrupt data for long recordings when DevTools is closed
+    this.recordingStartTime = Date.now();
+    console.log('[AudioRecorder] Starting recording with', TIMING.RECORDER_TIMESLICE_MS, 'ms timeslice at', this.recordingStartTime);
+    this.mediaRecorder.start(TIMING.RECORDER_TIMESLICE_MS);
   }
 
   /**
@@ -51,12 +57,54 @@ export class AudioRecorder {
         return;
       }
 
+      const recordingDuration = (Date.now() - this.recordingStartTime) / 1000;
+      console.log('[AudioRecorder] Stopping recorder after', recordingDuration.toFixed(1), 'seconds');
+      console.log('[AudioRecorder] Current state:', this.mediaRecorder.state);
+      console.log('[AudioRecorder] Chunks collected so far:', this.audioChunks.length);
+
+      // Check if recorder is actually recording
+      if (this.mediaRecorder.state === 'inactive') {
+        console.warn('[AudioRecorder] Recorder already inactive, returning collected chunks');
+        const audioBlob = new Blob(this.audioChunks, {
+          type: AUDIO_RECORDING_OPTIONS.mimeType,
+        });
+        this.stream.getTracks().forEach((track) => track.stop());
+        this.audioChunks = [];
+        this.mediaRecorder = null;
+        resolve(audioBlob);
+        return;
+      }
+
       // Handle stop event
       this.mediaRecorder.onstop = () => {
+        const finalDuration = (Date.now() - this.recordingStartTime) / 1000;
+        console.log('[AudioRecorder] Recording stopped after', finalDuration.toFixed(1), 'seconds');
+        console.log('[AudioRecorder] Total chunks collected:', this.audioChunks.length);
+
         // Create audio blob from collected chunks
         const audioBlob = new Blob(this.audioChunks, {
           type: AUDIO_RECORDING_OPTIONS.mimeType,
         });
+
+        console.log('[AudioRecorder] Audio blob created, size:', audioBlob.size, 'bytes');
+
+        // Calculate expected size vs actual (at 128kbps = 16KB/sec)
+        const expectedSize = finalDuration * 16000;
+        const actualSize = audioBlob.size;
+        const sizeRatio = (actualSize / expectedSize * 100).toFixed(0);
+        console.log('[AudioRecorder] Expected size:', expectedSize.toFixed(0), 'bytes, actual:', actualSize, 'bytes (' + sizeRatio + '%)');
+
+        // Validate audio size (minimum ~10KB for a reasonable recording)
+        if (audioBlob.size < 10000) {
+          console.error('[AudioRecorder] WARNING: Audio blob is suspiciously small!');
+          console.error('[AudioRecorder] This may indicate a recording failure or very short audio');
+        }
+
+        // Warning if we're missing more than 50% of expected audio
+        if (actualSize < expectedSize * 0.5) {
+          console.error('[AudioRecorder] WARNING: Audio size is less than 50% of expected!');
+          console.error('[AudioRecorder] Chunks may have been dropped during recording');
+        }
 
         // Clean up media stream
         this.stream.getTracks().forEach((track) => track.stop());
@@ -70,6 +118,7 @@ export class AudioRecorder {
 
       // Handle errors
       this.mediaRecorder.onerror = (event) => {
+        console.error('[AudioRecorder] MediaRecorder error:', event);
         reject(new Error(`Recording error: ${event}`));
       };
 

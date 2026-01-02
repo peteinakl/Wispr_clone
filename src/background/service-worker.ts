@@ -15,6 +15,7 @@ import { handleError } from '@/lib/error-handling/error-handler';
 let recordingState: RecordingState = 'idle';
 let offscreenDocumentCreated = false;
 let currentTabId: number | null = null;
+let keepaliveInterval: NodeJS.Timeout | null = null;
 
 // Event listeners MUST be registered at top level (not async)
 chrome.commands.onCommand.addListener(handleCommand);
@@ -34,14 +35,17 @@ function handleCommand(command: string) {
  * Toggle recording on/off
  */
 async function toggleRecording() {
-  console.log('[ServiceWorker] Toggle recording, current state:', recordingState);
+  console.log('[ServiceWorker] Toggle recording called, current state:', recordingState);
 
   if (recordingState === 'idle') {
+    console.log('[ServiceWorker] Starting recording...');
     await startRecording();
   } else if (recordingState === 'recording') {
+    console.log('[ServiceWorker] Stopping recording...');
     await stopRecording();
+  } else {
+    console.log('[ServiceWorker] Ignoring toggle - state is:', recordingState);
   }
-  // Ignore if processing
 }
 
 /**
@@ -103,6 +107,52 @@ async function initializeRecordingServices(tabId: number): Promise<void> {
 }
 
 /**
+ * Send keepalive ping to offscreen document to prevent Chrome from suspending it
+ */
+function sendKeepalivePing(): void {
+  try {
+    chrome.runtime.sendMessage({
+      type: 'KEEPALIVE_PING',
+      target: 'offscreen',
+    }).catch(() => {
+      // Ignore errors - offscreen document might be recreating
+      console.log('[ServiceWorker] Keepalive ping failed (expected if offscreen document is restarting)');
+    });
+  } catch (error) {
+    // Ignore errors during keepalive
+  }
+}
+
+/**
+ * Start keepalive mechanism to prevent offscreen document suspension
+ */
+function startKeepalive(): void {
+  // Clear any existing interval
+  if (keepaliveInterval) {
+    clearInterval(keepaliveInterval);
+  }
+
+  // Send a keepalive ping every 5 seconds during recording
+  // This prevents Chrome from suspending the offscreen document after 20-30 seconds
+  console.log('[ServiceWorker] Starting keepalive pings (every 5 seconds)');
+  keepaliveInterval = setInterval(sendKeepalivePing, 5000);
+
+  // Send immediate ping
+  sendKeepalivePing();
+}
+
+/**
+ * Stop keepalive mechanism
+ */
+function stopKeepalive(): void {
+  if (keepaliveInterval) {
+    console.log('[ServiceWorker] Stopping keepalive pings');
+    clearInterval(keepaliveInterval);
+    keepaliveInterval = null;
+  }
+}
+
+/**
  * Start recording in offscreen document
  */
 async function startOffscreenRecording(): Promise<void> {
@@ -114,6 +164,9 @@ async function startOffscreenRecording(): Promise<void> {
   if (!response?.success) {
     throw new Error(response?.error || 'Failed to start recording');
   }
+
+  // Start keepalive to prevent Chrome from suspending the offscreen document
+  startKeepalive();
 }
 
 /**
@@ -148,6 +201,7 @@ async function startRecording() {
   } catch (error) {
     const errorMessage = handleError('ServiceWorker - Start Recording', error);
     recordingState = 'idle';
+    stopKeepalive(); // Stop keepalive on error
 
     if (currentTabId) {
       await notifyError(errorMessage);
@@ -160,6 +214,9 @@ async function startRecording() {
  */
 async function stopRecording() {
   try {
+    // Stop keepalive immediately to prevent unnecessary pings
+    stopKeepalive();
+
     if (!currentTabId) {
       throw new Error('No active tab');
     }
@@ -182,16 +239,28 @@ async function stopRecording() {
       throw new Error(response?.error || 'Failed to get audio data');
     }
 
-    console.log('[ServiceWorker] Audio received, starting transcription');
+    console.log('[ServiceWorker] Audio received, base64 length:', response.audioData.length);
 
     // Convert base64 to Blob
     const audioBlob = base64ToBlob(response.audioData, response.mimeType || 'audio/webm;codecs=opus');
+    console.log('[ServiceWorker] Audio blob created, size:', audioBlob.size, 'bytes, type:', audioBlob.type);
+
+    // Validate audio size before sending to Whisper
+    // At 128kbps, we expect ~16KB per second of audio (128000 bits/sec ÷ 8 bits/byte)
+    // Minimum viable audio should be at least 10KB (less than 1 second is suspicious)
+    if (audioBlob.size < 10000) {
+      console.error('[ServiceWorker] Audio blob is too small:', audioBlob.size, 'bytes');
+      throw new Error('Recording failed: audio data is too small. Please try again.');
+    }
+
+    console.log('[ServiceWorker] Audio size OK, estimated duration:', (audioBlob.size / 16000).toFixed(1), 'seconds');
 
     // Transcribe audio
     await transcribeAudio(audioBlob);
   } catch (error) {
     const errorMessage = handleError('ServiceWorker - Stop Recording', error);
     recordingState = 'idle';
+    stopKeepalive(); // Ensure keepalive is stopped on error
 
     if (currentTabId) {
       await notifyError(errorMessage);

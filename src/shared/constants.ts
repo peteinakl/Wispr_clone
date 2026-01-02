@@ -48,7 +48,7 @@ export const TIMING = {
   FADE_OUT_DURATION_MS: 300, // Floating indicator fade out animation
   ERROR_DISPLAY_DURATION_MS: 3000, // How long to show error messages
   WAVEFORM_UPDATE_INTERVAL_MS: 150, // Waveform animation refresh rate
-  RECORDER_TIMESLICE_MS: 100, // MediaRecorder data chunk interval
+  RECORDER_TIMESLICE_MS: 1000, // MediaRecorder data chunk interval - prevents buffer overflow on long recordings
 } as const;
 
 // User-friendly error messages

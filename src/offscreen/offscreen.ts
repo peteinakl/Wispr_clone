@@ -60,6 +60,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case MessageType.STOP_RECORDING:
       handleStopRecording().then(sendResponse);
       break;
+    case 'KEEPALIVE_PING':
+      // Respond to keepalive pings to prove we're alive
+      // This prevents Chrome from suspending the offscreen document during long recordings
+      sendResponse({ alive: true });
+      break;
   }
 
   // Return true to indicate async response
@@ -114,10 +119,14 @@ async function handleStopRecording(): Promise<RecordingResponse> {
     // Stop recording and get audio blob
     const audioBlob = await recorder.stop();
 
+    console.log('[Offscreen] Recording stopped');
+    console.log('[Offscreen] Audio blob size:', audioBlob.size, 'bytes');
+    console.log('[Offscreen] Audio blob type:', audioBlob.type);
+    console.log('[Offscreen] Audio duration estimate:', (audioBlob.size / 16000).toFixed(2), 'seconds (assuming 16kHz)');
+
     // Convert Blob to base64 for message passing
     const base64Audio = await blobToBase64(audioBlob);
-
-    console.log('[Offscreen] Recording stopped, audio size:', audioBlob.size, 'bytes');
+    console.log('[Offscreen] Base64 audio length:', base64Audio.length, 'characters');
 
     // Clean up
     recorder = null;
