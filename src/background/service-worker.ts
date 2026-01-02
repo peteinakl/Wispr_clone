@@ -13,7 +13,6 @@ import { handleError } from '@/lib/error-handling/error-handler';
 
 // State management
 let recordingState: RecordingState = 'idle';
-let offscreenDocumentCreated = false;
 let currentTabId: number | null = null;
 let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -99,11 +98,11 @@ async function validateActiveTab(): Promise<chrome.tabs.Tab> {
 async function initializeRecordingServices(tabId: number): Promise<void> {
   await ensureContentScriptInjected(tabId);
 
-  if (!offscreenDocumentCreated) {
-    await createOffscreenDocument();
-    // Wait for offscreen document to be ready
-    await new Promise(resolve => setTimeout(resolve, TIMING.INITIALIZATION_DELAY_MS));
-  }
+  // Always verify offscreen document exists - Chrome may have closed it to save resources
+  // createOffscreenDocument() checks existence internally via getContexts()
+  await createOffscreenDocument();
+  // Wait for offscreen document to be ready (only needed on first creation, but harmless otherwise)
+  await new Promise(resolve => setTimeout(resolve, TIMING.INITIALIZATION_DELAY_MS));
 }
 
 /**
@@ -370,7 +369,6 @@ async function createOffscreenDocument() {
 
     if (existingContexts.length > 0) {
       console.log('[ServiceWorker] Offscreen document already exists');
-      offscreenDocumentCreated = true;
       return;
     }
 
@@ -381,7 +379,6 @@ async function createOffscreenDocument() {
       justification: 'Recording audio for voice-to-text transcription',
     });
 
-    offscreenDocumentCreated = true;
     console.log('[ServiceWorker] Offscreen document created');
   } catch (error) {
     handleError('ServiceWorker - Create Offscreen Document', error);

@@ -1,4 +1,4 @@
-import { REPLICATE_API_BASE_URL, POLLING_CONFIG, WHISPER_MODEL_VERSION_HASH } from '@/shared/constants';
+import { REPLICATE_API_BASE_URL, POLLING_CONFIG, WHISPER_MODEL_VERSION_HASH, TIMING } from '@/shared/constants';
 import { blobToBase64, sleep, handleApiError } from '@/shared/utils';
 
 interface Prediction {
@@ -18,6 +18,29 @@ export class ReplicateClient {
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+  }
+
+  /**
+   * Fetch with timeout using AbortController
+   */
+  private async fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMING.API_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - please try again');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -49,7 +72,7 @@ export class ReplicateClient {
    * Create a new prediction
    */
   private async createPrediction(audioDataUri: string): Promise<Prediction> {
-    const response = await fetch(`${REPLICATE_API_BASE_URL}/predictions`, {
+    const response = await this.fetchWithTimeout(`${REPLICATE_API_BASE_URL}/predictions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
@@ -86,7 +109,7 @@ export class ReplicateClient {
    */
   private async pollPrediction(predictionId: string): Promise<Prediction> {
     for (let attempt = 0; attempt < POLLING_CONFIG.MAX_ATTEMPTS; attempt++) {
-      const response = await fetch(
+      const response = await this.fetchWithTimeout(
         `${REPLICATE_API_BASE_URL}/predictions/${predictionId}`,
         {
           headers: {

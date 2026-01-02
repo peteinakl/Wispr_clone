@@ -50,6 +50,7 @@ export const TIMING = {
   WAVEFORM_UPDATE_INTERVAL_MS: 150, // Waveform animation refresh rate
   RECORDER_TIMESLICE_MS: 1000, // MediaRecorder data chunk interval - prevents buffer overflow on long recordings
   KEEPALIVE_INTERVAL_MS: 5000, // Prevent offscreen document suspension during recording
+  API_TIMEOUT_MS: 30000, // Timeout for API requests (30 seconds)
 } as const;
 
 // Audio validation thresholds

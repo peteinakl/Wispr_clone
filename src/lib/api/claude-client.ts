@@ -4,6 +4,7 @@ import {
   CLAUDE_MODEL,
   CLAUDE_MAX_TOKENS,
   CLAUDE_TEMPERATURE,
+  TIMING,
 } from '@/shared/constants';
 import { handleApiError } from '@/shared/utils';
 import { WritingStyle } from '@/lib/types/settings';
@@ -40,13 +41,36 @@ export class ClaudeClient {
   }
 
   /**
+   * Fetch with timeout using AbortController
+   */
+  private async fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMING.API_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - please try again');
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Refine transcribed text using Claude API
    * @param text - Raw transcribed text from Whisper
    * @param systemPrompt - System prompt for the style
    * @returns Refined text
    */
   async refineText(text: string, systemPrompt: string): Promise<string> {
-    const response = await fetch(`${CLAUDE_API_BASE_URL}/messages`, {
+    const response = await this.fetchWithTimeout(`${CLAUDE_API_BASE_URL}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

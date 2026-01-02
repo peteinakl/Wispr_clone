@@ -174,8 +174,6 @@ export class FloatingIndicator {
 
     this.styleElement = document.createElement('style');
     this.styleElement.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
-
       .flowtype-indicator {
         position: fixed;
         bottom: 24px;
