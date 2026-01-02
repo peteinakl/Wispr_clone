@@ -2,7 +2,7 @@ import { MessageType, type RecordingState, type RecordingDataMessage } from '@/l
 import { ReplicateClient } from '@/lib/api/replicate-client';
 import { StorageManager } from '@/lib/storage/storage-manager';
 import { TextRefinementService } from '@/lib/services/text-refinement';
-import { OFFSCREEN_DOCUMENT_PATH, ERROR_MESSAGES, TIMING } from '@/shared/constants';
+import { OFFSCREEN_DOCUMENT_PATH, ERROR_MESSAGES, TIMING, AUDIO_VALIDATION } from '@/shared/constants';
 import { base64ToBlob } from '@/shared/utils';
 import { handleError } from '@/lib/error-handling/error-handler';
 
@@ -15,7 +15,7 @@ import { handleError } from '@/lib/error-handling/error-handler';
 let recordingState: RecordingState = 'idle';
 let offscreenDocumentCreated = false;
 let currentTabId: number | null = null;
-let keepaliveInterval: NodeJS.Timeout | null = null;
+let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 
 // Event listeners MUST be registered at top level (not async)
 chrome.commands.onCommand.addListener(handleCommand);
@@ -132,10 +132,10 @@ function startKeepalive(): void {
     clearInterval(keepaliveInterval);
   }
 
-  // Send a keepalive ping every 5 seconds during recording
+  // Send a keepalive ping at regular intervals during recording
   // This prevents Chrome from suspending the offscreen document after 20-30 seconds
-  console.log('[ServiceWorker] Starting keepalive pings (every 5 seconds)');
-  keepaliveInterval = setInterval(sendKeepalivePing, 5000);
+  console.log('[ServiceWorker] Starting keepalive pings (every', TIMING.KEEPALIVE_INTERVAL_MS, 'ms)');
+  keepaliveInterval = setInterval(sendKeepalivePing, TIMING.KEEPALIVE_INTERVAL_MS);
 
   // Send immediate ping
   sendKeepalivePing();
@@ -247,13 +247,12 @@ async function stopRecording() {
 
     // Validate audio size before sending to Whisper
     // At 128kbps, we expect ~16KB per second of audio (128000 bits/sec ÷ 8 bits/byte)
-    // Minimum viable audio should be at least 10KB (less than 1 second is suspicious)
-    if (audioBlob.size < 10000) {
+    if (audioBlob.size < AUDIO_VALIDATION.MIN_SIZE_BYTES) {
       console.error('[ServiceWorker] Audio blob is too small:', audioBlob.size, 'bytes');
       throw new Error('Recording failed: audio data is too small. Please try again.');
     }
 
-    console.log('[ServiceWorker] Audio size OK, estimated duration:', (audioBlob.size / 16000).toFixed(1), 'seconds');
+    console.log('[ServiceWorker] Audio size OK, estimated duration:', (audioBlob.size / AUDIO_VALIDATION.BYTES_PER_SECOND).toFixed(1), 'seconds');
 
     // Transcribe audio
     await transcribeAudio(audioBlob);

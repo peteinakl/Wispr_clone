@@ -1,4 +1,4 @@
-import { AUDIO_RECORDING_OPTIONS, TIMING } from '@/shared/constants';
+import { AUDIO_RECORDING_OPTIONS, TIMING, AUDIO_VALIDATION } from '@/shared/constants';
 
 /**
  * Audio recorder using MediaRecorder API
@@ -8,6 +8,7 @@ export class AudioRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private stream: MediaStream;
+  /** Timestamp when recording started, used for duration tracking and validation */
   private recordingStartTime: number = 0;
 
   constructor(stream: MediaStream) {
@@ -88,21 +89,21 @@ export class AudioRecorder {
 
         console.log('[AudioRecorder] Audio blob created, size:', audioBlob.size, 'bytes');
 
-        // Calculate expected size vs actual (at 128kbps = 16KB/sec)
-        const expectedSize = finalDuration * 16000;
+        // Calculate expected size vs actual (at 128kbps)
+        const expectedSize = finalDuration * AUDIO_VALIDATION.BYTES_PER_SECOND;
         const actualSize = audioBlob.size;
         const sizeRatio = (actualSize / expectedSize * 100).toFixed(0);
         console.log('[AudioRecorder] Expected size:', expectedSize.toFixed(0), 'bytes, actual:', actualSize, 'bytes (' + sizeRatio + '%)');
 
-        // Validate audio size (minimum ~10KB for a reasonable recording)
-        if (audioBlob.size < 10000) {
+        // Validate audio size
+        if (audioBlob.size < AUDIO_VALIDATION.MIN_SIZE_BYTES) {
           console.error('[AudioRecorder] WARNING: Audio blob is suspiciously small!');
           console.error('[AudioRecorder] This may indicate a recording failure or very short audio');
         }
 
-        // Warning if we're missing more than 50% of expected audio
-        if (actualSize < expectedSize * 0.5) {
-          console.error('[AudioRecorder] WARNING: Audio size is less than 50% of expected!');
+        // Warning if we're missing more than expected percentage of audio
+        if (actualSize < expectedSize * AUDIO_VALIDATION.MIN_SIZE_RATIO) {
+          console.error('[AudioRecorder] WARNING: Audio size is less than', (AUDIO_VALIDATION.MIN_SIZE_RATIO * 100) + '% of expected!');
           console.error('[AudioRecorder] Chunks may have been dropped during recording');
         }
 

@@ -49,6 +49,14 @@ export const TIMING = {
   ERROR_DISPLAY_DURATION_MS: 3000, // How long to show error messages
   WAVEFORM_UPDATE_INTERVAL_MS: 150, // Waveform animation refresh rate
   RECORDER_TIMESLICE_MS: 1000, // MediaRecorder data chunk interval - prevents buffer overflow on long recordings
+  KEEPALIVE_INTERVAL_MS: 5000, // Prevent offscreen document suspension during recording
+} as const;
+
+// Audio validation thresholds
+export const AUDIO_VALIDATION = {
+  MIN_SIZE_BYTES: 10000, // Minimum audio size (~0.6 seconds at 128kbps)
+  MIN_SIZE_RATIO: 0.5,   // Minimum percentage of expected size (50%)
+  BYTES_PER_SECOND: 16000, // Expected bytes per second at 128kbps
 } as const;
 
 // User-friendly error messages

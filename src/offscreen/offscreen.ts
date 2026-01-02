@@ -1,6 +1,6 @@
 import { MessageType } from '@/lib/types/messages';
 import { AudioRecorder } from '@/lib/audio/recorder';
-import { AUDIO_CONSTRAINTS } from '@/shared/constants';
+import { AUDIO_CONSTRAINTS, AUDIO_VALIDATION } from '@/shared/constants';
 import { blobToBase64 } from '@/shared/utils';
 import { logError } from '@/lib/error-handling/error-handler';
 
@@ -122,7 +122,7 @@ async function handleStopRecording(): Promise<RecordingResponse> {
     console.log('[Offscreen] Recording stopped');
     console.log('[Offscreen] Audio blob size:', audioBlob.size, 'bytes');
     console.log('[Offscreen] Audio blob type:', audioBlob.type);
-    console.log('[Offscreen] Audio duration estimate:', (audioBlob.size / 16000).toFixed(2), 'seconds (assuming 16kHz)');
+    console.log('[Offscreen] Audio duration estimate:', (audioBlob.size / AUDIO_VALIDATION.BYTES_PER_SECOND).toFixed(2), 'seconds');
 
     // Convert Blob to base64 for message passing
     const base64Audio = await blobToBase64(audioBlob);
