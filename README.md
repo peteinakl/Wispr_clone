@@ -166,17 +166,19 @@ npm run type-check
 │   ├── lib/                # Core libraries
 │   │   ├── api/            # API clients
 │   │   │   ├── replicate-client.ts  # Whisper transcription
-│   │   │   └── claude-client.ts     # Text refinement (Phase 2)
+│   │   │   └── claude-client.ts     # Text refinement
 │   │   ├── audio/          # Audio recording
+│   │   ├── error-handling/ # Centralized error handling
 │   │   ├── services/       # Business logic
 │   │   │   └── text-refinement.ts   # Claude refinement service
 │   │   ├── storage/        # Chrome storage wrapper
 │   │   └── types/          # TypeScript types
 │   │       ├── messages.ts
-│   │       └── settings.ts          # Intelligence settings (Phase 2)
+│   │       └── settings.ts
 │   └── shared/             # Shared utilities
 │       ├── constants.ts
-│       └── utils.ts
+│       ├── utils.ts
+│       └── type-guards.ts
 ├── dist/                   # Build output (created by npm run build)
 ├── vite.config.ts          # Main Vite configuration
 ├── vite.content.config.ts  # Content script build config
@@ -289,8 +291,7 @@ Content Script: Inserts text at saved cursor position
 
 ## 🎨 Design Features
 
-### Premium Audio Equipment Aesthetic
-- **JetBrains Mono** typography for technical precision
+### Visual Design
 - **Dynamic waveform visualization** during recording
 - **Refined glassmorphism** with backdrop blur effects
 - **Smooth micro-interactions** and state transitions
@@ -374,7 +375,6 @@ Apache 2.0
 
 - **Whisper AI** by OpenAI (via Replicate)
 - **Claude AI** by Anthropic (optional text refinement)
-- **JetBrains Mono** font
 - Built with **React**, **TypeScript**, and **Vite**
 
 ---

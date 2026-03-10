@@ -76,6 +76,7 @@ export class ClaudeClient {
         'Content-Type': 'application/json',
         'x-api-key': this.apiKey,
         'anthropic-version': CLAUDE_API_VERSION,
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
